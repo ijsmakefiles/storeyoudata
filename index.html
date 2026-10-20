@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>StoreYouData</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#1c2030;--muted:#6b7285;--accent:#4f6bff;--track:#e3e6f0;--danger:#e5484d;--line:#eceef5;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141c;--card:#1b1e29;--text:#eef0f7;--muted:#9aa1b5;--accent:#7b90ff;--track:#2b2f3f;--danger:#34c759
+  ;--line:#262a38;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#12141c;--card:#1b1e29;--text:#eef0f7;--muted:#9aa1b5;--accent:#7b90ff;--track:#2b2f3f;--danger:#ff6b70;--line:#262a38;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:640px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:24px;margin:8px 0 4px}
+p.sub{color:var(--muted);margin:0 0 20px;font-size:14px}
+.card{background:var(--card);border-radius:16px;padding:18px;margin-bottom:16px;border:1px solid var(--line)}
+.bar{height:12px;background:var(--track);border-radius:99px;overflow:hidden;margin:10px 0 6px}
+.fill{height:100%;width:0;background:var(--accent);transition:width .4s}
+.meta{display:flex;justify-content:space-between;font-size:14px;color:var(--muted)}
+.drop{border:2px dashed var(--track);border-radius:14px;padding:28px 12px;text-align:center;cursor:pointer;color:var(--muted)}
+.drop.over{border-color:var(--accent);color:var(--accent)}
+button{font:inherit;cursor:pointer}
+.btn{background:#ffd23f;color:#1c2030;border:0;border-radius:10px;padding:10px 18px;margin-top:10px;font-weight:600}
+.row{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.small{font-size:12px;color:var(--muted)}
+.del{background:none;border:1px solid var(--line);color:var(--danger);border-radius:8px;padding:6px 10px}
+.empty{text-align:center;color:var(--muted);padding:16px 0}
+.msg{color:var(--danger);font-size:14px;margin-top:8px;min-height:18px}
+</style>
+</head>
+<body>
+<main>
+  <h1>☁️ StoreYouData</h1>
+  <p class="sub">Demo: files are saved in this browser on this device only.</p>
+
+  <div class="card">
+    <strong>Storage used</strong>
+    <div class="bar"><div class="fill" id="fill"></div></div>
+    <div class="meta"><span id="used">0 B used</span><span id="limit">5 GB free</span></div>
+  </div>
+
+  <div class="card">
+    <div class="drop" id="drop">Drag files here or tap to choose<br><button class="btn" type="button">Upload files</button></div>
+    <input type="file" id="pick" multiple hidden>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="card">
+    <strong>Your files</strong>
+    <div id="list"></div>
+  </div>
+</main>
+
+<script>
+var LIMIT = 5 * 1024 * 1024 * 1024; // 5 GB. Change this number to change the limit.
+var files = [];      // fallback copy kept in memory
+var db = null;
+
+function fmt(n){
+  if(n < 1024) return n + " B";
+  var u = ["KB","MB","GB"], i = -1;
+  do { n /= 1024; i++; } while(n >= 1024 && i < 2);
+  return n.toFixed(n < 10 ? 2 : 1) + " " + u[i];
+}
+function esc(s){ return s.replace(/[&<>"]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]; }); }
+function say(t){ document.getElementById("msg").textContent = t; }
+
+function openDb(){
+  return new Promise(function(res){
+    try{
+      var r = indexedDB.open("mystorage", 1);
+      r.onupgradeneeded = function(){ r.result.createObjectStore("f", {keyPath:"id"}); };
+      r.onsuccess = function(){ db = r.result; res(); };
+      r.onerror = function(){ res(); };
+    }catch(e){ res(); }
+  });
+}
+function dbAll(){
+  return new Promise(function(res){
+    if(!db) return res(files);
+    try{
+      var q = db.transaction("f").objectStore("f").getAll();
+      q.onsuccess = function(){ res(q.result); };
+      q.onerror = function(){ res(files); };
+    }catch(e){ res(files); }
+  });
+}
+function dbPut(rec){
+  files.push(rec);
+  return new Promise(function(res){
+    if(!db) return res();
+    try{
+      var t = db.transaction("f","readwrite"); t.objectStore("f").put(rec);
+      t.oncomplete = res; t.onerror = res;
+    }catch(e){ res(); }
+  });
+}
+function dbDel(id){
+  files = files.filter(function(f){ return f.id !== id; });
+  return new Promise(function(res){
+    if(!db) return res();
+    try{
+      var t = db.transaction("f","readwrite"); t.objectStore("f").delete(id);
+      t.oncomplete = res; t.onerror = res;
+    }catch(e){ res(); }
+  });
+}
+
+async function render(){
+  var all = await dbAll();
+  files = all;
+  all.sort(function(a,b){ return b.added - a.added; });
+  var used = all.reduce(function(s,f){ return s + f.size; }, 0);
+  document.getElementById("used").textContent = fmt(used) + " used";
+  document.getElementById("limit").textContent = fmt(LIMIT - used) + " free of " + fmt(LIMIT);
+  document.getElementById("fill").style.width = Math.min(100, used / LIMIT * 100) + "%";
+  var el = document.getElementById("list");
+  if(!all.length){ el.innerHTML = '<div class="empty">No files yet. Upload your first one!</div>'; return; }
+  el.innerHTML = all.map(function(f){
+    return '<div class="row"><div class="name">' + esc(f.name) + '<div class="small">' + fmt(f.size) + ' · ' + new Date(f.added).toLocaleDateString() + '</div></div><button class="del" data-id="' + f.id + '">Delete</button></div>';
+  }).join("");
+}
+
+async function addFiles(list){
+  say("");
+  var used = files.reduce(function(s,f){ return s + f.size; }, 0);
+  for(var i = 0; i < list.length; i++){
+    var f = list[i];
+    if(used + f.size > LIMIT){ say("Not enough space for " + f.name + ". Delete something or upgrade."); continue; }
+    await dbPut({id: Date.now() + "-" + i + "-" + Math.random().toString(36).slice(2,6), name: f.name, size: f.size, added: Date.now(), blob: f});
+    used += f.size;
+  }
+  render();
+}
+
+var drop = document.getElementById("drop"), pick = document.getElementById("pick");
+drop.addEventListener("click", function(){ pick.click(); });
+pick.addEventListener("change", function(){ addFiles(pick.files); pick.value = ""; });
+drop.addEventListener("dragover", function(e){ e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", function(){ drop.classList.remove("over"); });
+drop.addEventListener("drop", function(e){ e.preventDefault(); drop.classList.remove("over"); addFiles(e.dataTransfer.files); });
+document.getElementById("list").addEventListener("click", async function(e){
+  var id = e.target.getAttribute("data-id");
+  if(id){ await dbDel(id); render(); }
+});
+
+openDb().then(render);
+</script>
+</body>
+</html>
