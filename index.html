@@ -4,11 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>StoreYouData</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#4f6bff">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <style>
 :root{--bg:#f6f7fb;--card:#fff;--text:#1c2030;--muted:#6b7285;--accent:#4f6bff;--track:#e3e6f0;--danger:#e5484d;--line:#eceef5;
 box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141c;--card:#1b1e29;--text:#eef0f7;--muted:#9aa1b5;--accent:#7b90ff;--track:#2b2f3f;--danger:#34c759
-  ;--line:#262a38;color-scheme:dark}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141c;--card:#1b1e29;--text:#eef0f7;--muted:#9aa1b5;--accent:#7b90ff;--track:#2b2f3f;--danger:#ff6b70;--line:#262a38;color-scheme:dark}}
 :root[data-theme="dark"]{--bg:#12141c;--card:#1b1e29;--text:#eef0f7;--muted:#9aa1b5;--accent:#7b90ff;--track:#2b2f3f;--danger:#ff6b70;--line:#262a38;color-scheme:dark}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
@@ -30,6 +34,10 @@ button{font:inherit;cursor:pointer}
 .del{background:none;border:1px solid var(--line);color:var(--danger);border-radius:8px;padding:6px 10px}
 .empty{text-align:center;color:var(--muted);padding:16px 0}
 .msg{color:var(--danger);font-size:14px;margin-top:8px;min-height:18px}
+.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+.tabs button{background:none;border:1px solid var(--line);color:var(--text);border-radius:99px;padding:6px 14px}
+.tabs button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.steps{margin:8px 0 0;padding-left:20px;line-height:1.6;font-size:14px}
 </style>
 </head>
 <body>
@@ -52,6 +60,19 @@ button{font:inherit;cursor:pointer}
   <div class="card">
     <strong>Your files</strong>
     <div id="list"></div>
+  </div>
+<div class="card" id="install">
+    <strong>Get the app</strong>
+    <p class="small" style="margin:6px 0 4px">Install StoreYouData on your device. Pick yours:</p>
+    <button class="btn" id="installNow" type="button" hidden>Install app</button>
+    <div class="tabs" id="tabs">
+      <button type="button" data-os="ios">iOS</button>
+      <button type="button" data-os="android">Android</button>
+      <button type="button" data-os="windows">Windows</button>
+      <button type="button" data-os="mac">Mac</button>
+      <button type="button" data-os="linux">Linux</button>
+    </div>
+    <ol class="steps" id="steps"></ol>
   </div>
 </main>
 
@@ -149,6 +170,42 @@ document.getElementById("list").addEventListener("click", async function(e){
 });
 
 openDb().then(render);
+
+// ---- Install buttons ----
+var STEPS = {
+  ios: ["Open this page in Safari.", "Tap the Share button (the square with an arrow).", "Tap “Add to Home Screen”.", "Tap Add. The icon appears on your home screen."],
+  android: ["Open this page in Chrome.", "Tap the ⋮ menu at the top right.", "Tap “Install app” (or “Add to Home screen”).", "Tap Install."],
+  windows: ["Open this page in Chrome or Edge.", "Click the install icon at the right end of the address bar.", "Click Install. The app opens in its own window."],
+  mac: ["Open this page in Chrome or Edge, and click the install icon in the address bar.", "Or in Safari 17 or newer: File menu, then “Add to Dock”.", "Confirm to finish."],
+  linux: ["Open this page in Chrome, Chromium, or Edge.", "Click the install icon at the right end of the address bar.", "Click Install. Firefox on desktop can’t install web apps."]
+};
+function showOs(os){
+  document.getElementById("steps").innerHTML = STEPS[os].map(function(s){ return "<li>" + s + "</li>"; }).join("");
+  Array.prototype.forEach.call(document.querySelectorAll("#tabs button"), function(b){
+    b.classList.toggle("on", b.getAttribute("data-os") === os);
+  });
+}
+var ua = navigator.userAgent, guess = "windows";
+if(/iPhone|iPad|iPod/.test(ua)) guess = "ios";
+else if(/Android/.test(ua)) guess = "android";
+else if(/Mac/.test(ua)) guess = navigator.maxTouchPoints > 1 ? "ios" : "mac";
+else if(/Linux|X11/.test(ua)) guess = "linux";
+document.getElementById("tabs").addEventListener("click", function(e){
+  var os = e.target.getAttribute("data-os"); if(os) showOs(os);
+});
+showOs(guess);
+
+var deferred = null;
+window.addEventListener("beforeinstallprompt", function(e){
+  e.preventDefault(); deferred = e;
+  document.getElementById("installNow").hidden = false;
+});
+document.getElementById("installNow").addEventListener("click", async function(){
+  if(!deferred) return;
+  deferred.prompt(); await deferred.userChoice;
+  deferred = null; this.hidden = true;
+});
+if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(function(){}); }
 </script>
 </body>
 </html>
