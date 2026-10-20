@@ -64,7 +64,7 @@ button{font:inherit;cursor:pointer}
 <div class="card" id="install">
     <strong>Get the app</strong>
     <p class="small" style="margin:6px 0 4px">Install StoreYouData on your device. Pick yours:</p>
-    <button class="btn" id="installNow" type="button" hidden>Install app</button>
+    <button class="btn" id="installNow" type="button">Install app</button>
     <div class="tabs" id="tabs">
       <button type="button" data-os="ios">iOS</button>
       <button type="button" data-os="android">Android</button>
@@ -198,13 +198,17 @@ showOs(guess);
 var deferred = null;
 window.addEventListener("beforeinstallprompt", function(e){
   e.preventDefault(); deferred = e;
-  document.getElementById("installNow").hidden = false;
 });
 document.getElementById("installNow").addEventListener("click", async function(){
-  if(!deferred) return;
-  deferred.prompt(); await deferred.userChoice;
-  deferred = null; this.hidden = true;
+  if(deferred){
+    deferred.prompt(); await deferred.userChoice; deferred = null;
+  } else {
+    document.getElementById("steps").scrollIntoView({behavior: "smooth", block: "center"});
+  }
 });
+if(window.matchMedia("(display-mode: standalone)").matches || navigator.standalone){
+  document.getElementById("install").hidden = true;
+}
 if("serviceWorker" in navigator){ navigator.serviceWorker.register("sw.js").catch(function(){}); }
 </script>
 </body>
